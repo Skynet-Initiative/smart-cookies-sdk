@@ -81,7 +81,22 @@ jobs:
       # `--release` adds the license gate on top of the packaging checks CI already runs.
       - run: node publish-check.mjs --release
 
-      - name: npm publish
+      # Two paths, and the first one is temporary.
+      #
+      # npm will not let you configure a trusted publisher for a package that does not exist yet,
+      # so the very first release of a new name has to authenticate with a token. After that,
+      # configure the trusted publisher (values above), delete the `NPM_TOKEN` secret, and this
+      # step stops running for good — no credential in the repository, nothing to leak or rotate.
+      - name: npm publish (bootstrap — token)
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        run: |
+          echo "::warning::Publishing with a stored token. Configure the trusted publisher on npm and delete the NPM_TOKEN secret; see the header of this workflow."
+          npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: npm publish (trusted publishing — no credential)
+        if: ${{ secrets.NPM_TOKEN == '' }}
         run: npm publish --provenance --access public
 
       - name: What is still manual

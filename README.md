@@ -66,6 +66,11 @@ await load({
 });
 ```
 
+`record: false` **does not download the recorder.** No script tag, no network request, and the
+promise resolves immediately with a handle whose methods are no-ops — so the `sc.track(…)` calls
+around it keep compiling and keep running, and turning a page off stays a configuration change
+rather than a code change.
+
 ```js
 await load({
   source, host,

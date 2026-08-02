@@ -224,18 +224,31 @@ export function load(opts: LoadOptions): Promise<SmartCookie> {
   const browser = typeof window !== "undefined" && typeof document !== "undefined";
   const added = browser && opts.restrict ? tighten(opts.restrict) : false;
 
-  if (pending) {
-    // A second call is normal — React strict mode, or a script tag and an npm call in one app.
-    // A second call carrying restrictions the first did not is not normal, and if the recorder
-    // has already read the global they will not take effect. Saying so is the whole point:
-    // silently dropping a masking instruction is the one failure mode this must not have.
-    if (added && ready()) {
-      console.warn(
-        "[smart-cookies] load() was called with new restrictions after capture had already " +
-          "started; they were NOT applied to this page. Pass every restriction to the first " +
-          "load() call, or set window.SmartCookieRestrict before the SDK loads."
-      );
-    }
+  // The recorder reads the global once, at init. So anything new arriving after it is already
+  // capturing will not take effect — and that is worth saying out loud, because silently
+  // dropping a masking instruction is the one failure mode this must not have.
+  //
+  // Checked before the `pending` guard rather than inside it, because the case that actually
+  // bites is a *first* call: a script tag installed the recorder, then application code calls
+  // `load()` to restrict a route. There is no earlier call to have been the one that missed it.
+  if (added && ready()) warnTooLate();
+
+  // A second call is otherwise normal — React strict mode double-invokes effects, and a script
+  // tag plus an npm call in one app is a supported install.
+  if (pending) return pending;
+
+  // `record: false` means the recorder is never fetched.
+  //
+  // It could be left to the recorder — it honours the same flag, which the script-tag install
+  // relies on — but then a page that has decided not to be recorded would still download the
+  // bundle, and `load()` would poll a global that is never going to report itself capturing
+  // until it timed out and rejected ten seconds later. A deliberate, documented configuration
+  // must not present as a failure.
+  //
+  // Only after the `ready()` check below, though: if a recorder is already running on the page,
+  // resolving a handle that does nothing would be a lie about what is being captured.
+  if (browser && window.SmartCookieRestrict?.record === false && !ready()) {
+    pending = Promise.resolve(inert());
     return pending;
   }
 
@@ -322,4 +335,33 @@ function ready(): SmartCookie | null {
   const sc = window.SmartCookie;
   if (!sc || typeof sc.consent?.state !== "function") return null;
   return sc.consent.state() === "uninitialized" ? null : sc;
+}
+
+function warnTooLate(): void {
+  console.warn(
+    "[smart-cookies] load() was called with new restrictions after capture had already " +
+      "started; they were NOT applied to this page. Pass every restriction to the first " +
+      "load() call, or set window.SmartCookieRestrict before the SDK loads."
+  );
+}
+
+/**
+ * The handle returned when this page is not being recorded.
+ *
+ * Every method is a no-op rather than a throw, so `restrict: { record: false }` is a
+ * configuration change and not a code change — the `sc.track(…)` calls around it keep compiling
+ * and keep running. `consent.state()` answers `"denied"` because that is the truth about this
+ * page: nothing is being captured and nothing will be.
+ */
+function inert(): SmartCookie {
+  return {
+    track() {},
+    identify() {},
+    stop() {},
+    consent: {
+      grant() {},
+      deny() {},
+      state: () => "denied"
+    }
+  };
 }

@@ -214,8 +214,10 @@ describe("restrictions", () => {
         }
       }
     };
-    void load({ ...OPTS, restrict: { record: false } });
-    assert.deepEqual(restrictAtInjection, { record: false });
+    // Not `record: false` — that one deliberately never injects at all, so it could not observe
+    // the ordering this test is about.
+    void load({ ...OPTS, restrict: { replay: false } });
+    assert.deepEqual(restrictAtInjection, { replay: false });
   });
 
   test("merge with restrictions a script tag set before the SDK loaded", async () => {
@@ -270,6 +272,32 @@ describe("restrictions", () => {
     assert.equal(browser.warnings.length, 1, "silently dropping a masking instruction is the one failure mode this must not have");
     assert.match(browser.warnings[0]!, /NOT applied/);
     assert.match(browser.warnings[0]!, /SmartCookieRestrict/);
+  });
+
+  test("record: false never fetches the recorder, and resolves instead of timing out", async () => {
+    const browser = fakeBrowser();
+    const { load } = await freshLoader();
+    const sc = await load({ ...OPTS, restrict: { record: false } });
+
+    assert.equal(browser.scripts.length, 0, "a page that will not be recorded must not download a recorder");
+    assert.equal(sc.consent.state(), "denied");
+    // A configuration change, not a code change: the calls around it keep working.
+    assert.doesNotThrow(() => sc.track("checkout_started", { plan: "pro" }));
+    assert.doesNotThrow(() => sc.identify("u_1"));
+    assert.doesNotThrow(() => sc.stop());
+  });
+
+  test("record: false does not pretend a recorder already running has stopped", async () => {
+    const browser = fakeBrowser();
+    browser.becomeReady();
+    const { load } = await freshLoader();
+    const sc = await load({ ...OPTS, restrict: { record: false } });
+    assert.equal(
+      sc.consent.state(),
+      "granted",
+      "a script tag got there first — handing back an inert handle would misreport what is being captured"
+    );
+    assert.equal(browser.warnings.length, 1, "and it must say the restriction did not apply");
   });
 
   test("no restrict argument leaves the global alone entirely", async () => {

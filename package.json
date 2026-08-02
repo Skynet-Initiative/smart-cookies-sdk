@@ -1,6 +1,6 @@
 {
   "name": "@skynet-initiative/smart-cookies",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser SDK loader for Smart Cookies — product analytics, session replay and heatmaps. Injects the recorder, resolves a typed handle, and lets a page restrict what is captured on it. Cookieless by default.",
   "type": "module",
   "license": "Apache-2.0",
@@ -29,7 +29,9 @@
   "sideEffects": false,
   "files": [
     "dist/loader.mjs",
+    "dist/loader.mjs.map",
     "dist/loader.cjs",
+    "dist/loader.cjs.map",
     "dist/loader.d.ts",
     "LICENSE",
     "README.md",

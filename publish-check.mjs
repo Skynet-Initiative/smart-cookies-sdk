@@ -15,17 +15,20 @@
  *     tarball installs clean and throws `ERR_MODULE_NOT_FOUND` on first import, because nothing
  *     in the workspace ever exercises the *published* layout — locally the package resolves
  *     through the source tree, where every path exists.
- *  4. **A `workspace:*` dependency left in `dependencies`.** `@smart-cookie/protocol` is bundled
- *     by esbuild, so it belongs in `devDependencies`; published as a runtime dependency it would
- *     be unresolvable from any registry and every install would fail.
+ *  4. **A `workspace:*` dependency left in `dependencies`.** A bundled package belongs in
+ *     `devDependencies`; published as a runtime dependency it would be unresolvable from any
+ *     registry and every install would fail.
+ *  5. **Anything the build emits that `files` does not ship.** (3) only sees entry points, and
+ *     the things that go missing are usually not entry points. Found by publishing 0.1.0 and
+ *     looking at what came back.
  *
- * Run after `build`, because (3) reads what the build actually emitted.
+ * Run after `build`, because (3) and (5) read what the build actually emitted.
  *
  * ## Two tiers, because they answer different questions
  *
- * (1), (3) and (4) are **packaging coherence**: they are bugs whenever they are true, they pass
- * today, and CI runs them on every change so a broken `exports` map is caught by the commit that
- * breaks it rather than by the release that ships it.
+ * (1), (3), (4) and (5) are **packaging coherence**: they are bugs whenever they are true, they
+ * pass today, and CI runs them on every change so a broken `exports` map is caught by the commit
+ * that breaks it rather than by the release that ships it.
  *
  * (2) is **release policy**: the license is an open decision, not a defect, and it only has to be
  * answered at the moment of publishing. Gating CI on it would leave `main` permanently red on a
@@ -33,7 +36,7 @@
  * runs under `--release`, in the release workflow, where it is a genuine blocker.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -81,9 +84,32 @@ for (const field of ["main", "module", "types", "unpkg", "browser"]) {
 for (const target of [...targets].sort()) {
   if (target.endsWith("package.json")) continue; // always in the tarball
   if (!existsSync(join(HERE, target))) {
-    problems.push(`\`${target}\` is an entry point with no file — run \`pnpm build\` first`);
+    problems.push(`\`${target}\` is an entry point with no file — run \`npm run build\` first`);
   } else if (!shipped(target)) {
     problems.push(`\`${target}\` is an entry point that \`files\` does not ship`);
+  }
+}
+
+// **Everything the build emits into dist/ has to leave in the tarball.**
+//
+// The `exports` check above only sees entry points, which is the narrow half of the problem. The
+// source maps are not entry points, so they passed every check while being built, omitted from
+// `files`, and referenced anyway — every shipped bundle ends with `//# sourceMappingURL=…`, so a
+// consumer's devtools requests a file the tarball does not contain and gets nothing.
+//
+// Its sibling in sky-remote's build.mjs was worse: `sky.debug.js` was built, unshipped, and
+// depended on by the deploy that lays out the public SDK origin. Both were found the same way —
+// by publishing and then looking at what came back — so the rule is inverted here too. Anything
+// the build emits and does not ship must be named as a deliberate exclusion.
+const NOT_SHIPPED = new Set([]);
+if (existsSync(join(HERE, "dist"))) {
+  for (const name of readdirSync(join(HERE, "dist"))) {
+    const target = `dist/${name}`;
+    if (NOT_SHIPPED.has(target) || shipped(target)) continue;
+    problems.push(
+      `\`${target}\` is built but \`files\` does not ship it. Add it to \`files\`, or to ` +
+        "`NOT_SHIPPED` in publish-check.mjs if leaving it out is deliberate"
+    );
   }
 }
 

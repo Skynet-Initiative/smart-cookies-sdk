@@ -6,9 +6,15 @@
 # provider says this workflow, in this repository, on this ref, is asking — not because we handed
 # a long-lived credential to a CI system.
 #
-# Until then there is an `NPM_TOKEN` secret, because npm will not let a trusted publisher be
-# configured for a package name that has never been published. The token path warns every time it
-# runs; deleting the secret is what finishes the migration.
+# **Live since 2026-08-02.** There is no `NPM_TOKEN` secret in this repository any more. The
+# bootstrap path below stays for the next new package name — npm will not let a trusted publisher
+# be configured for a name that has never been published, so a first release always needs a token
+# — but it is dormant, and it warns every time it runs so it cannot quietly become the norm again.
+#
+# Verified without burning a version: the secret was deleted and this workflow re-run against its
+# own tag. The token step skipped, the OIDC step authenticated, and the registry rejected it with
+# "You cannot publish over the previously published versions" — an application error that is only
+# reachable *after* authentication succeeds. A bad publisher config fails earlier, with a 403.
 #
 # It requires a matching trusted publisher on the npm side (Settings → the package → Trusted
 # publishers):

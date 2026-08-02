@@ -1,0 +1,41 @@
+# The loader, on every change.
+#
+# ## This job got much smaller in the split, and the reason is worth recording
+#
+# It used to run inside the engine's pnpm workspace and had to build `@smart-cookie/protocol`
+# before it could do anything, because the SDK bundle resolved that package through its `main`
+# and its `dist/` was gitignored. The loader never needed any of it — it imports nothing — but it
+# lived in the same tree as the recorder, so it inherited the recorder's build order.
+#
+# Now the recorder is in the private engine repository and this is a package with no imports and
+# no workspace. `npm ci` and four scripts.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck · test · build · packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # typecheck, the loader's own tests, a build, and the packaging checks that only show up in
+      # the *published* layout — an `exports` target `files` does not ship, or a `workspace:*`
+      # range left in `dependencies`. Locally the package resolves through the source tree, where
+      # every path exists, so nothing else would notice until an install failed in someone
+      # else's project.
+      - run: npm run check

@@ -1,0 +1,68 @@
+{
+  "name": "@skynet-initiative/smart-cookies",
+  "version": "0.1.0",
+  "description": "Browser SDK loader for Smart Cookies — product analytics, session replay and heatmaps. Injects the recorder, resolves a typed handle, and lets a page restrict what is captured on it. Cookieless by default.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Skynet-Initiative/smart-cookies-sdk.git"
+  },
+  "homepage": "https://github.com/Skynet-Initiative/smart-cookies-sdk#readme",
+  "bugs": "https://github.com/Skynet-Initiative/smart-cookies-sdk/issues",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "main": "./dist/loader.cjs",
+  "module": "./dist/loader.mjs",
+  "types": "./dist/loader.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/loader.d.ts",
+      "import": "./dist/loader.mjs",
+      "require": "./dist/loader.cjs",
+      "default": "./dist/loader.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist/loader.mjs",
+    "dist/loader.cjs",
+    "dist/loader.d.ts",
+    "LICENSE",
+    "README.md",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "keywords": [
+    "analytics",
+    "session-replay",
+    "heatmaps",
+    "product-analytics",
+    "cookieless"
+  ],
+  "scripts": {
+    "build": "node build.mjs && tsc -p tsconfig.json --emitDeclarationOnly",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --experimental-strip-types \"src/*.test.ts\"",
+    "publish-check": "node publish-check.mjs",
+    "check": "npm run typecheck && npm run test && npm run build && npm run publish-check",
+    "dev": "node build.mjs --watch"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.7.2"
+  },
+  "browserslist": [
+    "chrome >= 100",
+    "firefox >= 100",
+    "safari >= 15.4",
+    "edge >= 100"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

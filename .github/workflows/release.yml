@@ -1,0 +1,106 @@
+# Publish @skynet-initiative/smart-cookies to npm.
+#
+# ## No token
+#
+# This publishes over **trusted publishing**: npm accepts the release because GitHub's OIDC
+# provider says this workflow, in this repository, on this ref, is asking — not because we handed
+# a long-lived credential to a CI system. There is no `NODE_AUTH_TOKEN` here and no `NPM_TOKEN`
+# secret in this repository.
+#
+# It requires a matching trusted publisher on the npm side (Settings → the package → Trusted
+# publishers):
+#
+#     repository:  Skynet-Initiative/smart-cookies-sdk
+#     workflow:    release.yml
+#     environment: npm-publish
+#
+# npm does not validate that configuration when you save it; a mismatch shows up only here, as a
+# 403 at the publish step.
+#
+# Provenance and trusted publishing both refuse a private source repository — publishing from the
+# engine repository failed with `E422 … Only public source repositories are supported when
+# publishing with provenance`. That is why the loader lives here.
+#
+# ## What this publishes is the loader, not the recorder
+#
+# The tarball is ~11 kB: `dist/loader.{mjs,cjs}` and its types. The recorder is served from
+# `cookies.skynet-initiative.com/s/<key>.js`, which the loader injects, and the ingest
+# content-hash-versions it at boot from `SDK_DIST_DIR`.
+#
+# So a release here does **not** change what runs in a merchant's page; shipping the ingest image
+# does. This job and the engine deploy are independent, and that is the point: one artefact, one
+# version, one configuration path, and no way for the two install channels to drift apart.
+#
+# ## Why a tag and not a push to main
+#
+# Publishing is irreversible: npm's unpublish window is narrow and a name+version is burned for
+# good afterwards. Releasing is a decision someone makes, not a side effect of merging.
+
+name: release
+
+on:
+  push:
+    tags: ["sdk-v*"]
+
+permissions:
+  contents: read
+  id-token: write # trusted publishing + provenance
+
+jobs:
+  publish:
+    name: build · gate · publish
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      # Trusted publishing needs npm 11.5.1 or newer; Node 22 still ships npm 10.
+      - name: Use an npm that can publish without a token
+        run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - name: The tag and the manifest must agree
+        run: |
+          tag="${GITHUB_REF_NAME#sdk-v}"
+          manifest="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} says ${tag}, package.json says ${manifest}."
+            echo "::error::Publishing would put the wrong bytes under the right name, permanently."
+            exit 1
+          fi
+          echo "releasing ${manifest}"
+
+      - run: npm run check
+
+      # `--release` adds the license gate on top of the packaging checks CI already runs.
+      - run: node publish-check.mjs --release
+
+      - name: npm publish
+        run: npm publish --provenance --access public
+
+      - name: What is still manual
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ### Published \`@skynet-initiative/smart-cookies@${version}\` (loader, ~11 kB)
+
+          **This does not change what runs in any merchant's page.** The recorder is served from
+          \`/s/<key>.js\`, not from this tarball, so both install channels already run whatever the
+          deployed ingest is serving.
+
+          Shipping a new *recorder* is a separate action, in the private engine repository:
+
+          1. Build and push the ingest image (\`deploy/Dockerfile.ingest\` bundles the SDK into
+             \`/srv/sdk\`; the ingest content-hash-versions it at boot from \`SDK_DIST_DIR\`).
+          2. Deploy the smart-cookies Coolify app.
+          3. Installed sites pick it up within ~6 min (60s source cache + 300s loader cache) —
+             script-tag and npm installs alike, with no version to bump on either side.
+
+          Publish here only when \`src/loader.ts\` itself changed.
+          EOF

@@ -118,6 +118,29 @@ export interface SmartCookie {
     deny(): void;
     state(): ConsentState | "uninitialized";
   };
+  /**
+   * Report an error your own code caught.
+   *
+   * Uncaught errors and unhandled rejections are captured for you. This is for the other half —
+   * the ones you handled, which are invisible from the outside precisely because you handled
+   * them:
+   *
+   *     try {
+   *       await checkout(cart);
+   *     } catch (e) {
+   *       sc.captureException(e, { plan: "pro", total: cart.total, flag: "new-checkout" });
+   *     }
+   *
+   * `context` is free-form and rides on the error, which is usually the difference between a
+   * reproducible bug and a mystery. It is bounded client-side and scrubbed server-side like every
+   * other property, so treat it as annotation rather than a place to dump state — and never put
+   * anything in it you would not want stored.
+   *
+   * Never throws, and does nothing at all when capture has not started or the source has error
+   * capture switched off. It is called from inside your `catch`, where a throw would replace the
+   * error you were handling with ours.
+   */
+  captureException(error: unknown, context?: Record<string, unknown>): void;
   /** Stop capture. */
   stop(): void;
 }
@@ -357,6 +380,10 @@ function inert(): SmartCookie {
   return {
     track() {},
     identify() {},
+    // A no-op like the rest, and for the same reason: `restrict: { record: false }` is a
+    // configuration change, not a code change. The `sc.captureException(e)` in a catch block
+    // keeps compiling and keeps running on the routes that opted out of recording.
+    captureException() {},
     stop() {},
     consent: {
       grant() {},

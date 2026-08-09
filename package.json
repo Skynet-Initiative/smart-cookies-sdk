@@ -1,7 +1,7 @@
 {
   "name": "@skynet-initiative/smart-cookies",
-  "version": "0.1.1",
-  "description": "Browser SDK loader for Smart Cookies — product analytics, session replay and heatmaps. Injects the recorder, resolves a typed handle, and lets a page restrict what is captured on it. Cookieless by default.",
+  "version": "0.2.0",
+  "description": "Browser SDK loader for Smart Cookies — product analytics, session replay and heatmaps — plus the build-time half: a Next.js config wrapper and a CLI that upload your source maps so production stack traces read as your own files and lines.",
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
@@ -24,7 +24,16 @@
       "require": "./dist/loader.cjs",
       "default": "./dist/loader.mjs"
     },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "import": "./dist/next.mjs",
+      "require": "./dist/next.cjs",
+      "default": "./dist/next.mjs"
+    },
     "./package.json": "./package.json"
+  },
+  "bin": {
+    "smart-cookies": "./dist/cli.mjs"
   },
   "sideEffects": false,
   "files": [
@@ -33,6 +42,16 @@
     "dist/loader.cjs",
     "dist/loader.cjs.map",
     "dist/loader.d.ts",
+    "dist/next.mjs",
+    "dist/next.mjs.map",
+    "dist/next.cjs",
+    "dist/next.cjs.map",
+    "dist/next.d.ts",
+    "dist/cli.mjs",
+    "dist/cli.mjs.map",
+    "dist/cli.d.ts",
+    "dist/sourcemaps.d.ts",
+    "dist/upload.d.ts",
     "LICENSE",
     "README.md",
     "THIRD-PARTY-NOTICES.md"

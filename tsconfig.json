@@ -13,7 +13,13 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // The source imports siblings as `./upload.ts`, which is what `node --experimental-strip-types`
+    // resolves and what the test files already used. Safe here because nothing is emitted but
+    // declarations, and the rewrite turns the specifier back into `.js` for anything that lands
+    // in a `.d.ts`.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "src/**/*.test.ts"]

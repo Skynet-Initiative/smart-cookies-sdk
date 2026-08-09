@@ -5,10 +5,14 @@ POSTs a frozen envelope to the ingest. **Cookieless by default** — the only br
 uses is a `sessionStorage` session id, written under the consent gate.
 
 This repository is the public source of
-[`@skynet-initiative/smart-cookies`](https://www.npmjs.com/package/@skynet-initiative/smart-cookies),
-which is a **loader**: it injects the recorder from the CDN and resolves a typed handle. The
-recorder itself is built and served from Skynet's private engine repository. See
-[Two ways in, one artefact](#two-ways-in-one-artefact) for why.
+[`@skynet-initiative/smart-cookies`](https://www.npmjs.com/package/@skynet-initiative/smart-cookies).
+It ships two things that never meet at runtime:
+
+- **`.`** — a **loader**: it injects the recorder from the CDN and resolves a typed handle. The
+  recorder itself is built and served from Skynet's private engine repository. See
+  [Two ways in, one artefact](#two-ways-in-one-artefact) for why.
+- **`./next`** and the `smart-cookies` command — the **build-time half**, so a production stack
+  trace reads as your own files and lines. See [Source maps](#source-maps).
 
 ---
 
@@ -167,6 +171,95 @@ useEffect(() => {
     .catch(() => {});
 }, []);
 ```
+
+---
+
+## Source maps
+
+A production error arrives as `iR@00ixdp81ndh20.js:20:116626`. Uploading your source maps turns
+that into `app/checkout.ts:42`, with the line shown.
+
+### Next.js — one wrapper, nothing to run
+
+```js
+// next.config.mjs
+import { withSmartCookies } from "@skynet-initiative/smart-cookies/next";
+
+export default withSmartCookies(nextConfig);
+```
+
+```sh
+SMART_COOKIES_URL="https://<api>/projects/<projectId>/smart-cookies"
+SMART_COOKIES_KEY="skp_…"    # created in the dashboard, shown once
+```
+
+That is the whole setup. No build script, no CI step, no command to remember. The dashboard prints
+both values filled in, under the project's Setup tab.
+
+What it does to your build, in order:
+
+1. turns on `productionBrowserSourceMaps`, without which Next emits no browser maps in production
+   and there is nothing to upload;
+2. at the end of `next build`, pairs every chunk with its map, gives both the same debug id, and
+   uploads the maps;
+3. **deletes the maps from the folder you serve.** Step 1 would otherwise publish your original
+   TypeScript at a guessable URL beside every chunk. Whoever turns the maps on owns turning them
+   off — so if *you* had already set `productionBrowserSourceMaps`, they are left exactly where
+   you put them.
+
+With no `SMART_COOKIES_KEY` it enables nothing and says so once: source maps you cannot upload are
+an exposure with no benefit.
+
+| Option | Default | |
+| --- | --- | --- |
+| `url`, `key` | `SMART_COOKIES_URL`, `SMART_COOKIES_KEY` | |
+| `deleteAfterUpload` | whether the wrapper is what enabled the maps | `false` serves your source publicly |
+| `failBuild` | `false` | an unreachable API is a reason for unreadable stacks, not for a failed deploy |
+| `disable` | `false` | for a preview branch that should not file builds |
+| `silent` | `false` | warnings and failures are always printed |
+
+It requires **Next 15.4.1 or newer**, which is where `compiler.runAfterProductionCompile` arrived.
+On anything older it changes nothing and tells you to use the command below.
+
+#### Why a config hook and not a bundler plugin
+
+`next build` uses Turbopack by default from Next 16. A webpack plugin — which is what most source
+map integrations are — is a **silent no-op** on such a build: `config.webpack` is never called,
+nothing errors, and you find out weeks later when a stack trace is still minified. So this hooks
+[`compiler.runAfterProductionCompile`](https://nextjs.org/docs/architecture/nextjs-compiler),
+Next's own post-compile hook, which fires whichever bundler ran.
+
+That is only possible because of what the work is: a trailing comment appended to each chunk and a
+file read. Nothing is injected at the top of a bundle, so no mapping is ever shifted and nothing
+has to happen inside the bundler's pipeline. **Nothing of this ships to your users' browsers.**
+
+### Any other build
+
+```sh
+npx @skynet-initiative/smart-cookies sourcemaps ./dist --delete
+```
+
+Vite, Remix, Astro, plain webpack or esbuild — same work, run after the build and before the
+deploy. Your build has to emit source maps for it to have anything to upload (`--sourcemap`,
+`devtool: 'source-map'`, `build.sourcemap: true`). `--delete` is opt-in here and implicit in the
+wrapper, because here the maps exist because your own build config asks for them.
+
+### If you already use another source map tool
+
+Debug ids are shared ground: `turbopack.debugIds`, Sentry's bundler plugin and this all write the
+same `//# debugId=` marker, following the same
+[TC39 proposal](https://github.com/tc39/ecma426/blob/main/proposals/debug-id.md). When one is
+already there it is reused and your bundles come out byte-identical.
+
+Apply `withSmartCookies` **outside** the other wrapper:
+
+```js
+export default withSmartCookies(withSentryConfig(nextConfig, { /* … */ }));
+```
+
+Tools of this kind delete the maps once they have uploaded them, and there is no recovering from
+being second. The wrapper runs its own work before any hook that was already registered, for the
+same reason.
 
 ---
 

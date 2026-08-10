@@ -84,13 +84,16 @@ export function stampMap(mapText: string, mapBytes: Uint8Array): StampedMap {
     throw new Error("is JSON but not a source map document");
   }
   const map = doc as Record<string, unknown>;
-  if (Array.isArray(map.sections)) {
+  // INDEXED maps (`sections` instead of `mappings`) are accepted, and getting that wrong was
+  // expensive. Turning on `turbopack.debugIds` — which is what puts a debug id in a Next 16
+  // bundle in the first place — makes Turbopack prepend a polyfill line and wrap the map in one
+  // section rather than re-encode every mapping. On the first real integration that turned 140
+  // maps out of 141 into files this refused, with advice ("emit a flat map per bundle") that a
+  // Turbopack user has no way to follow. The reader flattens them; there is nothing to reject.
+  if (!Array.isArray(map.sections) && (typeof map.mappings !== "string" || !Array.isArray(map.sources))) {
     throw new Error(
-      "is an INDEXED source map (`sections` rather than `mappings`), which cannot be read back — have the build emit one flat map per bundle"
+      "has neither a `mappings` string with a `sources` array nor a `sections` array, so it is not a source map"
     );
-  }
-  if (typeof map.mappings !== "string" || !Array.isArray(map.sources)) {
-    throw new Error("has no `mappings` string and `sources` array, so it is not a source map");
   }
 
   for (const key of ["debugId", "debug_id"]) {

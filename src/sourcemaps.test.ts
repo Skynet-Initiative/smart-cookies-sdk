@@ -81,9 +81,42 @@ describe("stamping the map", () => {
     assert.equal(stampMap(theirs, encode(theirs)).debugId, "already-there");
   });
 
-  test("names what an indexed map is instead of calling it invalid", () => {
-    const indexed = JSON.stringify({ version: 3, sections: [] });
-    assert.throws(() => stampMap(indexed, encode(indexed)), /INDEXED/);
+  test("accepts an indexed map, which is what a Turbopack build with debug ids emits", () => {
+    // This threw until a real customer build. `turbopack.debugIds` — the setting that puts a debug
+    // id in a Next 16 bundle at all — makes Turbopack prepend a polyfill line and wrap the map in
+    // one section rather than re-encode every mapping. Refusing that form rejected 140 of 141 maps
+    // on the first real integration, with advice ("emit a flat map per bundle") its author had no
+    // way to follow. The reader flattens sections; there is nothing here to reject.
+    const indexed = JSON.stringify({
+      version: 3,
+      sources: [],
+      debugId: "79ef7282-bf65-d1b9-df17-43c97c1ce0d3",
+      sections: [
+        {
+          offset: { line: 1, column: 0 },
+          map: { version: 3, sources: ["app/checkout.ts"], names: [], mappings: "AAAA" }
+        }
+      ]
+    });
+    const stamped = stampMap(indexed, encode(indexed));
+    assert.equal(stamped.debugId, "79ef7282-bf65-d1b9-df17-43c97c1ce0d3");
+    assert.equal(stamped.reused, true);
+    assert.equal(stamped.text, indexed, "an already-stamped map must come back byte-identical");
+  });
+
+  test("mints an id for an indexed map that carries none", () => {
+    const indexed = JSON.stringify({
+      version: 3,
+      sections: [{ offset: { line: 0, column: 0 }, map: { version: 3, sources: [], mappings: "" } }]
+    });
+    const stamped = stampMap(indexed, encode(indexed));
+    assert.equal(stamped.reused, false);
+    assert.equal(JSON.parse(stamped.text).debugId, stamped.debugId);
+  });
+
+  test("still refuses JSON that is neither shape", () => {
+    const neither = JSON.stringify({ version: 3, hello: true });
+    assert.throws(() => stampMap(neither, encode(neither)), /not a source map/);
   });
 
   test("names the bundle-instead-of-map mistake", () => {

@@ -163,6 +163,36 @@ describe("uploading a build's maps", () => {
     assert.match(result.outcomes[0]!.detail, /413.*map too large/);
   });
 
+  test("prints the reason, not the status name the gateway puts beside it", async () => {
+    // 129 lines of `403: Forbidden` in one real build log. The gateway answers Nest's envelope,
+    // where `error` is the HTTP status name and `message` is the sentence — and reading `error`
+    // first turned "your key hit its rate limit, it does not need replacing" into a word whose
+    // only reasonable response is to replace the key.
+    const dir = await buildDir({ "a.js": "x();\n", "a.js.map": MAP() });
+    const api = await fakeApi(() => ({
+      status: 429,
+      body: JSON.stringify({
+        message: "this project access key has hit its rate limit — the key itself is valid",
+        error: "Too Many Requests",
+        statusCode: 429
+      })
+    }));
+    servers.push(api.close);
+
+    const result = await run({ dir, url: api.url, key: "k" });
+    assert.match(result.outcomes[0]!.detail, /hit its rate limit/);
+    assert.ok(!result.outcomes[0]!.detail.includes("Too Many Requests"));
+  });
+
+  test("falls back to `error` when that is all the body has", async () => {
+    const dir = await buildDir({ "a.js": "x();\n", "a.js.map": MAP() });
+    const api = await fakeApi(() => ({ status: 400, body: JSON.stringify({ error: "bad debug id" }) }));
+    servers.push(api.close);
+
+    const result = await run({ dir, url: api.url, key: "k" });
+    assert.match(result.outcomes[0]!.detail, /400: bad debug id/);
+  });
+
   test("quotes a gateway that answers HTML instead of blaming the map", async () => {
     const dir = await buildDir({ "a.js": "x();\n", "a.js.map": MAP() });
     const api = await fakeApi(() => ({ status: 502, body: "<html>Bad Gateway</html>" }));

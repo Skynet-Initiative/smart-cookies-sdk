@@ -1,6 +1,6 @@
 {
   "name": "@skynet-initiative/smart-cookies",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Browser SDK loader for Smart Cookies — product analytics, session replay and heatmaps — plus the build-time half: a Next.js config wrapper and a CLI that upload your source maps so production stack traces read as your own files and lines.",
   "type": "module",
   "license": "Apache-2.0",

@@ -328,6 +328,29 @@ async function processBundle(bundlePath: string, opts: RunOptions): Promise<Outc
   };
 }
 
+/**
+ * The sentence out of a failed response, whichever envelope it arrived in.
+ *
+ * `error` used to be preferred, and on the gateway that fronts this API that field holds the HTTP
+ * status name — so a build log full of real, specific refusals printed `403: Forbidden`, 129 times.
+ * The reason was sitting in `message` the whole time, and the difference is between "your key hit
+ * its rate limit, it does not need replacing" and a word that invites you to replace it.
+ *
+ * `message` first, then `error`, then the raw body — every layer between a CI and the engine gets
+ * to be quoted rather than flattened.
+ */
+function errorText(parsed: Record<string, unknown>, raw: string): string {
+  for (const key of ["message", "error"]) {
+    const value = parsed[key];
+    if (typeof value === "string" && value.trim().length > 0) return value;
+    // Nest's validation pipe answers with an array of messages.
+    if (Array.isArray(value) && value.every((v) => typeof v === "string") && value.length > 0) {
+      return value.join("; ");
+    }
+  }
+  return raw.slice(0, 200) || `no body (${raw.length} bytes)`;
+}
+
 async function upload(
   opts: RunOptions,
   file: string,
@@ -355,8 +378,7 @@ async function upload(
     if (!res.ok) return { ok: false, error: `${res.status} from ${endpoint}: ${text.slice(0, 200)}` };
   }
   if (!res.ok) {
-    const message = typeof parsed.error === "string" ? parsed.error : text.slice(0, 200);
-    return { ok: false, error: `${res.status}: ${message}` };
+    return { ok: false, error: `${res.status}: ${errorText(parsed, text)}` };
   }
   return {
     ok: true,

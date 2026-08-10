@@ -303,8 +303,11 @@ async function processBundle(bundlePath: string, opts: RunOptions): Promise<Outc
       await unlink(mapPath);
       deleted = true;
       if (!opts.readOnlyBundles) {
-        const stripped = stripSourceMappingURL(needsMarker ? marked : bundle);
-        if (stripped !== (needsMarker ? marked : bundle)) await writeFile(bundlePath, stripped);
+        // `marked` IS `bundle` when no marker was needed — `needsMarker` is
+        // defined as `marked !== bundle` — so the ternary that used to be written
+        // twice here always chose `marked`.
+        const stripped = stripSourceMappingURL(marked);
+        if (stripped !== marked) await writeFile(bundlePath, stripped);
       }
     } catch (e) {
       // A map we could not remove is a published source, so it is a failure of the run even

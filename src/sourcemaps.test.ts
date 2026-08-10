@@ -209,3 +209,40 @@ describe("pairing a bundle to its map", () => {
     assert.equal(isBundle("/out/css/styles.css"), false);
   });
 });
+
+describe("marking a bundle that is already marked", () => {
+  test("returns the very same string, so the caller can skip the write", () => {
+    // The caller decides whether to rewrite the file with `marked !== bundle`.
+    // Building a fresh copy and comparing it byte-for-byte gives the right answer
+    // and costs a full copy of every chunk in `.next/static` to learn that
+    // nothing changed — which, on a Next 16 build, is every file.
+    const id = "be639305-1924-505a-7b83-0ae667503240";
+    const bundle = `console.log(1)\n//# debugId=${id}\n`;
+    assert.equal(markBundle(bundle, id), bundle);
+  });
+
+  test("still rewrites when the id present is a different one", () => {
+    const bundle = "console.log(1)\n//# debugId=00000000-0000-0000-0000-000000000000\n";
+    const out = markBundle(bundle, "be639305-1924-505a-7b83-0ae667503240");
+    assert.notEqual(out, bundle);
+    assert.ok(out.includes("be639305-1924-505a-7b83-0ae667503240"));
+    assert.ok(!out.includes("00000000-0000-0000-0000-000000000000"));
+  });
+
+  test("a map whose sourcesContent mentions debugId is still read correctly", () => {
+    // The reason `stampMap` parses instead of scanning for the field. This
+    // document's real id is the top-level one; the other is a string inside
+    // somebody's source, escaped into `sourcesContent`. A scan would have
+    // returned it and filed the map under an id no bundle carries.
+    const doc = JSON.stringify({
+      version: 3,
+      sources: ["a.ts"],
+      sourcesContent: ["const s = '\"debugId\": \"not-the-id\"';"],
+      mappings: "AAAA",
+      debugId: "be639305-1924-505a-7b83-0ae667503240",
+    });
+    const stamped = stampMap(doc, new TextEncoder().encode(doc));
+    assert.equal(stamped.debugId, "be639305-1924-505a-7b83-0ae667503240");
+    assert.equal(stamped.reused, true);
+  });
+});

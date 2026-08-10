@@ -72,6 +72,19 @@ export interface StampedMap {
  * failed" is a message nobody can act on.
  */
 export function stampMap(mapText: string, mapBytes: Uint8Array): StampedMap {
+  // Deliberately NOT short-circuited with a regex, and it is worth saying why —
+  // the parse below is the most expensive thing this package does, ~141 maps per
+  // Next build with the whole original source inlined in `sourcesContent`, and
+  // skipping it is the obvious optimisation.
+  //
+  // It is unsafe. `sourcesContent` carries the customer's source as JSON-escaped
+  // text, so a module that itself contains `"debugId": "…"` — this package's own
+  // sources do — appears inside the document as an escaped run that a scan
+  // happily matches. The id read out of it would be a string from somebody's
+  // source code, the map would be filed under an id no bundle carries, and the
+  // symptom is "symbolication silently does nothing": indistinguishable from
+  // never having uploaded. A build-machine second is a cheaper thing to spend
+  // than that, so the document is parsed properly.
   let doc: unknown;
   try {
     doc = JSON.parse(mapText);
@@ -132,15 +145,22 @@ const MARKER = /\/\/[#@]\s*debugId\s*=\s*[A-Za-z0-9_.:-]+/g;
  */
 export function markBundle(source: string, debugId: string): string {
   const marker = `//# debugId=${debugId}`;
-  if (MARKER.test(source)) {
-    MARKER.lastIndex = 0;
-    // Replace every marker rather than the last: a bundle carrying two is one that has been
-    // through two tools, and leaving a stale id in the file makes the answer depend on which one
-    // happens to be nearer the end.
-    return source.replace(MARKER, marker);
-  }
   MARKER.lastIndex = 0;
-  return source.endsWith("\n") ? `${source}${marker}\n` : `${source}\n${marker}\n`;
+  const found = [...source.matchAll(MARKER)];
+  if (found.length === 0) {
+    return source.endsWith("\n") ? `${source}${marker}\n` : `${source}\n${marker}\n`;
+  }
+  // Already correct: return the SAME string, so the caller's `marked !== bundle`
+  // comparison is a pointer check. This used to `replace` unconditionally, which
+  // built a full copy of every chunk and then compared it byte-for-byte against
+  // the original — twice over the whole of `.next/static` — only to conclude
+  // that nothing had changed, which on a Next 16 build is every file.
+  if (found.every((m) => m[0] === marker)) return source;
+  // Replace every marker rather than the last: a bundle carrying two is one that has been
+  // through two tools, and leaving a stale id in the file makes the answer depend on which one
+  // happens to be nearer the end.
+  MARKER.lastIndex = 0;
+  return source.replace(MARKER, marker);
 }
 
 const SOURCE_MAPPING_URL = /\n?\/\/[#@]\s*sourceMappingURL=[^\n]*/g;
